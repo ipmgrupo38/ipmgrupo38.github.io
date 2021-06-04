@@ -1,62 +1,67 @@
-// Bakeoff #2 - Seleção de Alvos e Fatores Humanos
+// Bakeoff #3 - EscriWta em Smartwatches
 // IPM 2020-21, Semestre 2
-// Entrega: até dia 7 de Maio às 23h59 através do Fenix
-// Bake-off: durante os laboratórios da semana de 3 de Maio
+// Entrega: até dia 4 de Junho às 23h59 através do Fenix
+// Bake-off: durante os laboratórios da semana de 31 de Maio
 
 // p5.js reference: https://p5js.org/reference/
 
 // Database (CHANGE THESE!)
-const GROUP_NUMBER = 38;      // Add your group number here as an integer (e.g., 2, 3)
-const BAKE_OFF_DAY = false;  // Set to 'true' before sharing during the simulation and bake-off days
-const VERSION = "3-00-05";
-const V_DESCRIPTION = "Final Version";
+const GROUP_NUMBER = 38;      // add your group number here as an integer (e.g., 2, 3)
+const BAKE_OFF_DAY = true;  // set to 'true' before sharing during the simulation and bake-off days
+<<<<<<< HEAD
+const VERSION = "1-01-03";
+=======
+const VERSION = "1-01-02";
+>>>>>>> b79b848350e9623cb6ecb295792b728bd8ac36a3
 
-// Target and grid properties (DO NOT CHANGE!)
-let PPI, PPCM;
-let TARGET_SIZE;
-let TARGET_PADDING, MARGIN, LEFT_PADDING, TOP_PADDING;
-let continue_button;
+let PPI, PPCM;                 // pixel density (DO NOT CHANGE!)
+let second_attempt_button;     // button that starts the second attempt (DO NOT CHANGE!)
+
+// Finger parameters (DO NOT CHANGE!)
+let finger_img;                // holds our finger image that simules the 'fat finger' problem
+let FINGER_SIZE, FINGER_OFFSET;// finger size and cursor offsett (calculated after entering fullscreen)
+
+// Arm parameters (DO NOT CHANGE!)
+let arm_img;                   // holds our arm/watch image
+let ARM_LENGTH, ARM_HEIGHT;  // arm size and position (calculated after entering fullscreen)
+
+// Study control parameters (DO NOT CHANGE!)
+let draw_finger_arm = false;  // used to control what to show in draw()
+let phrases = [];     // contains all 501 phrases that can be asked of the user
+let current_trial = 0;      // the current trial out of 2 phrases (indexes into phrases array above)
+let attempt = 0       // the current attempt out of 2 (to account for practice)
+let target_phrase = "";     // the current target phrase
+let entered = new Array(2); // array to store the result of the two trials (i.e., the two phrases entered in one attempt)
+let CPS = 0;      // add the characters per second (CPS) here (once for every attempt)
+let total_characters = 0;
 
 // Metrics
-let testStartTime, testEndTime;// time between the start and end of one attempt (48 trials)
-let hits = 0;      // number of successful selections
-let misses = 0;      // number of missed selections (used to calculate accuracy)
-let database;                  // Firebase DB  
-let ourDatabase;
+let attempt_start_time, attempt_end_time; // attemps start and end times (includes both trials)
+let trial_end_time;            // the timestamp of when the lastest trial was completed
+let letters_entered = 0;      // running number of letters entered (for final WPM computation)
+let letters_expected = 0;      // running number of letters expected (from target phrase)
+let errors = 0;      // a running total of the number of errors (when hitting 'ACCEPT')
+let database;                  // Firebase DB
 
-// Study control parameters
-let draw_targets = false;  // used to control what to show in draw()
-let trials = [];     // contains the order of targets that activate in the test
-let current_trial = 0;      // the current trial number (indexes into trials array above)
-let attempt = 0;      // users complete each test twice to account for practice (attemps 0 and 1)
-let fitts_IDs = [];     // add the Fitts ID for each selection here (-1 when there is a miss)
-let mouseXprev;       //stores de X coordinate of previous mouse position to calculate fitts
-let mouseYprev;       //stores de Y coordinate of previous mouse position to calculate fitts
-let sounds = [];
+// 2D Keyboard UI
+let leftArrow, rightArrow;     // holds the left and right UI images for our basic 2D keyboard   
+let ARROW_SIZE;                // UI button size
+let char_index = 0;
 
-// Circle stuff
-const stroke_next_BASE = 6;
-const stroke_two_times_BASE = 10;
-let stroke_next = stroke_next_BASE;
-let stroke_two_times = stroke_two_times_BASE;
+//cursor
+let showCursor = false;
 
-// Ghost ball
-const ghost_speed_BASE = 5;
-let ghost_speed = ghost_speed_BASE;
-let offset;
-let diff_dist;
-let diff_vec_norm;
-let current_pos;
-let next_pos;
+//sendInput
+let space = false;
+let backspace = false;
+let guess1, guess2 = false;
+let onKey = false;
 
-// Target class (position and width)
-class Target {
-  constructor(x, y, w) {
-    this.x = x;
-    this.y = y;
-    this.w = w;
-  }
-}
+//hoveEffect
+let xHover = 0;
+let yHover = 0;
+let wHover = 0;
+let hHover = 0;
 
 function parseVersion() {
   let v = [];
@@ -73,151 +78,229 @@ function parseVersion() {
   return v;
 }
 
+// Runs once before the setup() and loads our data (images, phrases)
+function preload() {
+  // Loads simulation images (arm, finger) -- DO NOT CHANGE!
+  arm = loadImage("data/arm_watch.png");
+  fingerOcclusion = loadImage("data/finger.png");
+
+  // Loads the target phrases (DO NOT CHANGE!)
+  phrases = loadStrings("data/phrases.txt");
+
+}
+
 // Runs once at the start
 function setup() {
-  createCanvas(700, 500);    // window size in px before we go into fullScreen()
-  frameRate(60);             // frame rate (DO NOT CHANGE!)
+  createCanvas(700, 500);   // window size in px before we go into fullScreen()
+  frameRate(60);            // frame rate (DO NOT CHANGE!)
 
-  randomizeTrials();         // randomize the trial order at the start of execution
-
-  textFont("Arial", 18);     // font size for the majority of the text
-  drawUserIDScreen();        // draws the user input screen (student number and display size)
+  // DO NOT CHANGE THESE!
+  shuffle(phrases, true);   // randomize the order of the phrases list (N=501)
+  target_phrase = phrases[current_trial];
+  total_characters += target_phrase.length;
+  drawUserIDScreen();       // draws the user input screen (student number and display size)
 }
 
-function preload() {
-  loadSounds();
-}
-
-function isOverTarget() {
-  let target = getTargetBounds(trials[current_trial]);
-  if (dist(target.x, target.y, mouseX, mouseY) < target.w / 2) {
-    return true;
-  }
-  return false;
-}
-
-function loadSounds() {
-  sounds.push(loadSound("./sounds/newSounds/success.mp3"));
-
-  sounds.push(loadSound("./sounds/newSounds/fail.mp3"));
-
-}
-
-function sumVectors(v1, v2) {
-  return createVector(v1.x + v2.x, v1.y + v2.y);
-}
-
-function mulVector(v, a) {
-  return createVector(v.x * a, v.y * a);
-}
-
-function doCalculations() {
-  let current = getTargetBounds(trials[current_trial]);
-  let next = getTargetBounds(trials[current_trial + 1]);
-
-  let x_off = next.x - current.x;
-  let y_off = next.y - current.y;
-
-  current_pos = createVector(current.x, current.y);
-  next_pos = createVector(next.x, next.y);
-  let vec = createVector(x_off, y_off);
-  diff_dist = vec.mag();
-  diff_vec_norm = vec.normalize();
-  offset = 0;
-}
-
-function drawGhost() {
-  let target = getTargetBounds(trials[current_trial]);
-  push();
-  noStroke();
-  fill(color(0, 255, 60, 45));
-
-  let pos = sumVectors(current_pos, mulVector(diff_vec_norm, offset));
-  circle(pos.x, pos.y, target.w);
-  pop();
-
-  offset += ghost_speed * (sumVectors(next_pos, mulVector(pos, -1)).mag()) / 100;
-}
-
-// Runs every frame and redraws the screen
 function draw() {
-  if (draw_targets) {
-    // The user is interacting with the 4x4 target grid
-    background(color(0, 0, 0));        // sets background to black
+  if (draw_finger_arm) {
+    background(255);           // clear background
+    noCursor();                // hides the cursor to simulate the 'fat finger'
 
-    // Print trial count at the top left-corner of the canvas
-    fill(color(255, 255, 255));
-    textAlign(LEFT);
-    text("Trial " + (current_trial + 1) + " of " + trials.length, 50, 20);
-    text("Version: " + VERSION, 50, 40);
-    text(V_DESCRIPTION, 50, 60);
+    drawArmAndWatch();         // draws arm and watch background
+    writeTargetAndEntered();   // writes the target and entered phrases above the watch
+    drawACCEPT();              // draws the 'ACCEPT' button that submits a phrase and completes a trial
 
-    //if is over the target, cursor changes to pointer. else stays arrow
-    /*     if (isOverTarget() == true)
-          cursor(HAND);
-    
-        else
-          cursor(ARROW);
-     */
-    drawGhost();
-    // Draw all 16 targets
-    for (var i = 0; i < 16; i++) drawTarget(i);
-  }
-}
+    // Draws the non-interactive screen area (4x1cm) -- DO NOT CHANGE SIZE!
+    noStroke();
+    fill(210);
+    rect(width / 2 - 2.0 * PPCM, height / 2 - 2.0 * PPCM, 4.0 * PPCM, 1.0 * PPCM);
+    fill(255);
+    stroke(0);
+    circle(width / 2, height / 2 - 1.75 * PPCM, 0.5 * PPCM);
+    textAlign(CENTER);
+    textFont("Arial", 0.30 * PPCM);
+    fill(0);
+    text("" + current_letter, width / 2, height / 2 - 1.6 * PPCM);
 
-// Print and save results at the end of 48 trials
-function printAndSavePerformance() {
-  // DO NOT CHANGE THESE! 
-  let accuracy = parseFloat(hits * 100) / parseFloat(hits + misses);
-  let test_time = (testEndTime - testStartTime) / 1000;
-  let time_per_target = nf((test_time) / parseFloat(hits + misses), 0, 3);
-  let penalty = constrain((((parseFloat(95) - (parseFloat(hits * 100) / parseFloat(hits + misses))) * 0.2)), 0, 100);
-  let target_w_penalty = nf(((test_time) / parseFloat(hits + misses) + penalty), 0, 3);
-  let timestamp = day() + "/" + month() + "/" + year() + "  " + hour() + ":" + minute() + ":" + second();
+    // Draws the touch input area (4x3cm) -- DO NOT CHANGE SIZE!
+    noStroke();
+    fill(210)
+    rect(width / 2 - 2.0 * PPCM, height / 2 - 1.0 * PPCM, 4.0 * PPCM, 3.0 * PPCM);
 
-  background(color(0, 0, 0));   // clears screen
-  fill(color(255, 255, 255));   // set text fill color to white
-  text(timestamp, 10, 20);    // display time on screen (top-left corner)
+    draw2DKeyboard();
 
-  textAlign(CENTER);
-  text("Attempt " + (attempt + 1) + " out of 2 completed!", width / 2, 60);
-  text("Hits: " + hits, width / 2, 100);
-  text("Misses: " + misses, width / 2, 120);
-  text("Accuracy: " + accuracy + "%", width / 2, 140);
-  text("Total time taken: " + test_time + "s", width / 2, 160);
-  text("Average time per target: " + time_per_target + "s", width / 2, 180);
-  text("Average time for each target (+ penalty): " + target_w_penalty + "s", width / 2, 220);
-  text("Fitts Index Of Performance", width / 2, 240);
-  // Print Fitts IDS (one per target, -1 if failed selection)
-  // 
-  for (let i = 0; i < 2; i++)
-    for (let j = 1; j <= 24; j++) {
-      let aux;
-      if (fitts_IDs[i * 24 + j - 1] == -1)
-        aux = "MISSED";
-      else if (fitts_IDs[i * 24 + j - 1] == -2)
-        aux = "---";
-      else
-        aux = fitts_IDs[i * 24 + j - 1]
+    drawFatFinger();
 
-      text("Trial " + (i * 24 + j) + ": " + aux, (i + 1) * 2 * width / (5 + i * 2), 280 + j * 20);
+    displayCursor();
+
+    if (showCursor) {
+      drawCursor();// draws the finger that simulates the 'fat finger' problem
     }
 
+  }
+}
 
+function mouseReleased() {
+  if (onKey) {
+    if (guess1) {
+      UpdateCurrentlyTyped(current_guess);
+      guess1 = false;
+    }
+
+    else if (guess2) {
+      UpdateCurrentlyTyped(current_guess2);
+      guess2 = false;
+
+    }
+
+    else if (backspace) {
+      BackSpaceCurrentWord();
+      backspace = false;
+
+    }
+
+    else if (space) {
+      //TODO AddLetterCurrentWord(" ")
+      AddLetterCurrentlyTyped(" ");
+      ResetCurrentWord();
+      space = false;
+
+    }
+    else {
+      AddLetterCurrentWord(current_letter);
+
+    }
+    onKey = false;
+  }
+}
+
+function calcCPS(attempt_duration) {
+  return total_characters / attempt_duration;
+}
+
+function draw2DKeyboard() {
+
+  keysKeyboard();
+  lettersKeyboard();
+
+}
+
+// Evoked when the mouse button was pressed
+function mousePressed() {
+  // Only look for mouse presses during the actual test
+  if (draw_finger_arm) {
+
+    // Check if mouse click happened within 'ACCEPT' 
+    // (i.e., submits a phrase and completes a trial)
+    if (mouseClickWithin(width / 2 - 2 * PPCM, height / 2 - 5.1 * PPCM, 4.0 * PPCM, 2.0 * PPCM)) {
+      DeliverCurrentlyTyped();
+      ResetCurrentWord();
+      // Saves metrics for the current trial
+      letters_expected += target_phrase.trim().length;
+      letters_entered += currently_typed.trim().length;
+      errors += computeLevenshteinDistance(currently_typed.trim(), target_phrase.trim());
+      entered[current_trial] = currently_typed;
+      trial_end_time = millis();
+
+      current_trial++;
+
+      // Check if the user has one more trial/phrase to go
+      if (current_trial < 2) {
+        // Prepares for new trial
+        ResetCurrentlyTyped()
+        target_phrase = phrases[current_trial];
+        total_characters += target_phrase.length;
+      }
+      else {
+        // The user has completed both phrases for one attempt
+        draw_finger_arm = false;
+        attempt_end_time = millis();
+
+        printAndSavePerformance();        // prints the user's results on-screen and sends these to the DB
+        attempt++;
+
+        // Check if the user is about to start their second attempt
+        if (attempt < 2) {
+          second_attempt_button = createButton('START 2ND ATTEMPT');
+          second_attempt_button.mouseReleased(startSecondAttempt);
+          second_attempt_button.position(width / 2 - second_attempt_button.size().width / 2, height / 2 + 200);
+        }
+      }
+    }
+  }
+}
+
+// Resets variables for second attempt
+function startSecondAttempt() {
+  // Re-randomize the trial order (DO NOT CHANG THESE!)
+  shuffle(phrases, true);
+  current_trial = 0;
+  target_phrase = phrases[current_trial];
+  total_characters += target_phrase.length;
+  // Resets performance variables (DO NOT CHANG THESE!)
+  letters_expected = 0;
+  letters_entered = 0;
+  errors = 0;
+  ResetCurrentlyTyped();
+  ResetCurrentWord();
+  CPS = 0;
+
+  SetCurrentLetter('a')
+  ResetCurrentWord()
+
+  // Show the watch and keyboard again
+  second_attempt_button.remove();
+  draw_finger_arm = true;
+  attempt_start_time = millis();
+}
+
+// Print and save results at the end of 2 trials
+function printAndSavePerformance() {
+  // DO NOT CHANGE THESE
+  let attempt_duration = (attempt_end_time - attempt_start_time) / 60000;          // 60K is number of milliseconds in minute
+  let wpm = (letters_entered / 5.0) / attempt_duration;
+  let freebie_errors = letters_expected * 0.05;                                  // no penalty if errors are under 5% of chars
+  let penalty = max(0, (errors - freebie_errors) / attempt_duration);
+  let wpm_w_penalty = max((wpm - penalty), 0);                                   // minus because higher WPM is better: NET WPM
+  let timestamp = day() + "/" + month() + "/" + year() + "  " + hour() + ":" + minute() + ":" + second();
+
+  CPS = calcCPS(attempt_duration * 60);
+  total_characters = 0;
+
+  background(color(0, 0, 0));    // clears screen
+  cursor();                    // shows the cursor again
+
+  textFont("Arial", 16);       // sets the font to Arial size 16
+  fill(color(255, 255, 255));    //set text fill color to white
+  text(timestamp, 100, 20);    // display time on screen 
+
+  text("Finished attempt " + (attempt + 1) + " out of 2!", width / 2, height / 2);
+
+  // For each trial/phrase
+  let h = 20;
+  for (i = 0; i < 2; i++, h += 40) {
+    text("Target phrase " + (i + 1) + ": " + phrases[i], width / 2, height / 2 + h);
+    text("User typed " + (i + 1) + ": " + entered[i], width / 2, height / 2 + h + 20);
+  }
+
+  text("Raw WPM: " + wpm.toFixed(2), width / 2, height / 2 + h + 20);
+  text("Freebie errors: " + freebie_errors.toFixed(2), width / 2, height / 2 + h + 40);
+  text("Penalty: " + penalty.toFixed(2), width / 2, height / 2 + h + 60);
+  text("WPM with penalty: " + wpm_w_penalty.toFixed(2), width / 2, height / 2 + h + 80);
+  text("CPS: " + CPS.toFixed(2), width / 2, height / 2 + h + 100);
   // Saves results (DO NOT CHANGE!)
   let attempt_data =
   {
     project_from: GROUP_NUMBER,
     assessed_by: student_ID,
-    test_completed_by: timestamp,
+    attempt_completed_by: timestamp,
     attempt: attempt,
-    hits: hits,
-    misses: misses,
-    accuracy: accuracy,
-    attempt_duration: test_time,
-    time_per_target: time_per_target,
-    target_w_penalty: target_w_penalty,
-    fitts_IDs: fitts_IDs
+    attempt_duration: attempt_duration,
+    raw_wpm: wpm,
+    freebie_errors: freebie_errors,
+    penalty: penalty,
+    wpm_w_penalty: wpm_w_penalty,
+    cps: CPS
   }
 
   // Send data to DB (DO NOT CHANGE!)
@@ -234,20 +317,17 @@ function printAndSavePerformance() {
   }
 
   // Our database
-
-  console.log(parseVersion());
   let ourAttempt_data = {
     version: VERSION,
     assessed_by: student_ID,
-    test_completed_by: timestamp,
+    attempt_completed_by: timestamp,
     attempt: attempt,
-    hits: hits,
-    misses: misses,
-    accuracy: accuracy,
-    attempt_duration: test_time,
-    time_per_target: time_per_target,
-    target_w_penalty: target_w_penalty,
-    fitts_IDs: fitts_IDs,
+    attempt_duration: attempt_duration,
+    raw_wpm: wpm,
+    freebie_errors: freebie_errors,
+    penalty: penalty,
+    wpm_w_penalty: wpm_w_penalty,
+    cps: CPS
   }
 
   if (attempt === 0) {
@@ -264,179 +344,366 @@ function printAndSavePerformance() {
     let my_ref = ourDatabase.ref("v" + aux);
     my_ref.push(ourAttempt_data);
   }
-
-}
-
-// Mouse button was pressed - lets test to see if hit was in the correct target
-function mousePressed() {
-  // Only look for mouse releases during the actual test
-  // (i.e., during target selections)
-
-  if (draw_targets) {
-    // Get the location and size of the target the user should be trying to select
-    let previous;
-
-    if (current_trial != 0) {
-      previous = getTargetBounds(trials[current_trial - 1]);
-    }
-
-    let target = getTargetBounds(trials[current_trial]);
-
-    if (current_trial < trials.length) {
-
-      // Check to see if the mouse cursor is inside the target bounds,
-      // increasing either the 'hits' or 'misses' counters
-      if (dist(target.x, target.y, mouseX, mouseY) < target.w / 2) {
-        sounds[0].play()
-        hits++;
-        if (current_trial != 0) {
-          let fittsID = Math.log2((dist(target.x, target.y, mouseXprev, mouseYprev) / target.w) + 1)
-          fitts_IDs.push(parseFloat(fittsID).toFixed(3));
-        }
-        else
-          fitts_IDs.push(-2);
-      }
-      else {
-        sounds[1].play();
-        misses++;
-        fitts_IDs.push(-1);
-      }
-      mouseXprev = mouseX;
-      mouseYprev = mouseY;
-    }
-
-    current_trial++;                 // Move on to the next trial/target
-    if (current_trial <= trials.length) {
-      doCalculations();
-    }
-    // Check if the user has completed all 48 trials
-    if (current_trial === trials.length) {
-      testEndTime = millis();
-      draw_targets = false;          // Stop showing targets and the user performance results
-      printAndSavePerformance();     // Print the user's results on-screen and send these to the DB
-      attempt++;
-
-      // If there's an attempt to go create a button to start this
-      if (attempt < 2) {
-        continue_button = createButton('START 2ND ATTEMPT');
-        continue_button.mouseReleased(continueTest);
-        continue_button.position(width / 2 - continue_button.size().width / 2, 3 * height / 4 - continue_button.size().height / 2);
-      }
-    }
-  }
-}
-
-// Draw target on-screen
-function drawTarget(i) {
-  // Get the location and size for target (i)
-  let target = getTargetBounds(i);
-
-  // Check whether this target is the target the user should be trying to select
-  if (trials[current_trial] === i) {
-    fill(color(98, 255, 0)); // TARGET COLOR
-    stroke(color(255, 255, 255));
-    strokeWeight(stroke_two_times);
-
-    if (isOverTarget() == true) {
-      fill(color(80, 150, 10)); //HOVERING COLOR
-    }
-
-
-
-    if (trials[current_trial + 1] == i) {
-      stroke(color(98, 0, 255));  // TWO TIMES STROKE COLOR
-      strokeWeight(stroke_two_times);
-    }
-
-  }
-  else if (trials[current_trial + 1] === i) {
-
-    fill(color(155, 155, 155)); // NEXT COLOR
-    stroke(color(98, 255, 0)); // NEXT STROKE COLOR
-    strokeWeight(stroke_next);
-  }
-  // Does not draw a border if this is not the target the user
-  // should be trying to select
-  else {
-    noStroke();
-    fill(color(120, 120, 120)); // delta = 50.4313
-  }
-
-  // Draws the target
-
-  circle(target.x, target.y, target.w);
-
-  noStroke();
-
-  // INNER CIRCLE
-  if (trials[current_trial] === i) {
-    fill(color(0, 150, 10));
-    if (trials[current_trial + 1] == i)
-      fill(color(98, 0, 255));
-    //Draw inner circle
-    circle(target.x, target.y, target.w / 3)
-  }
-}
-
-// Returns the location and size of a given target
-function getTargetBounds(i) {
-  var x = parseInt(LEFT_PADDING) + parseInt((i % 4) * (TARGET_SIZE + TARGET_PADDING) + MARGIN);
-  var y = parseInt(TOP_PADDING) + parseInt(Math.floor(i / 4) * (TARGET_SIZE + TARGET_PADDING) + MARGIN);
-
-  return new Target(x, y, TARGET_SIZE);
-}
-
-// Evoked after the user starts its second (and last) attempt
-function continueTest() {
-  // Re-randomize the trial order
-  shuffle(trials, true);
-  current_trial = 0;
-  print("trial order: " + trials);
-
-  // Resets performance variables
-  hits = 0;
-  misses = 0;
-  fitts_IDs = [];
-
-  continue_button.remove();
-
-  // Shows the targets again
-  draw_targets = true;
-  testStartTime = millis();
 }
 
 // Is invoked when the canvas is resized (e.g., when we go fullscreen)
-
-function calcSize(val, ds) {
-  return val * (26.71 / (ds + 5 * Math.PI));
-}
-
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-
   let display = new Display({ diagonal: display_size }, window.screen);
 
-  // DO NOT CHANGE THESE!
+  // DO NO CHANGE THESE!
   PPI = display.ppi;                        // calculates pixels per inch
   PPCM = PPI / 2.54;                         // calculates pixels per cm
-  TARGET_SIZE = 1.5 * PPCM;                         // sets the target size in cm, i.e, 1.5cm
-  TARGET_PADDING = 1.5 * PPCM;                         // sets the padding around the targets in cm
-  MARGIN = 1.5 * PPCM;                         // sets the margin around the targets in cm
+  FINGER_SIZE = (int)(11 * PPCM);
+  FINGER_OFFSET = (int)(0.8 * PPCM)
+  ARM_LENGTH = (int)(19 * PPCM);
+  ARM_HEIGHT = (int)(11.2 * PPCM);
 
-  // Sets the margin of the grid of targets to the left of the canvas (DO NOT CHANGE!)
-  LEFT_PADDING = width / 2 - TARGET_SIZE - 1.5 * TARGET_PADDING - 1.5 * MARGIN;
-
-  // Sets the margin of the grid of targets to the top of the canvas (DO NOT CHANGE!)
-  TOP_PADDING = height / 2 - TARGET_SIZE - 1.5 * TARGET_PADDING - 1.5 * MARGIN;
+  ARROW_SIZE = (int)(2.2 * PPCM);
 
 
-  // Calc sizes of stuff
-  ghost_speed = calcSize(ghost_speed_BASE, display_size);
-  stroke_next = calcSize(stroke_next_BASE, display_size);
-  stroke_two_times = calcSize(stroke_two_times_BASE, display_size);
-
-  // Starts drawing targets immediately after we go fullscreen
-  draw_targets = true;
-  doCalculations()
+  // Starts drawing the watch immediately after we go fullscreen (DO NO CHANGE THIS!)
+  draw_finger_arm = true;
+  attempt_start_time = millis();
 }
 
+function cursorWithin(x, y, w, h) {
+  return (mouseX > x && mouseX < x + w && mouseY - 0.75 * PPCM > y && mouseY - 0.75 * PPCM < y + h);
+}
+
+function drawHoverEffect() {
+  if (guess1 || guess2) {
+    fill(121, 168, 226);
+    stroke(10);
+    rect(xHover, yHover, wHover, hHover, 0.05 * PPCM, 0.05 * PPCM);
+  }
+
+  else {
+    fill(150);
+    stroke(10);
+    rect(xHover, yHover, wHover, hHover, 0.05 * PPCM, 0.05 * PPCM);
+  }
+
+}
+
+//draw
+function keysKeyboard() {
+
+  fill(170);
+  stroke(10);
+
+  rect(width / 2 - 1.97 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 1.53 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 1.08 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 0.63 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 0.18 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 0.27 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 0.72 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 1.17 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 1.62 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+
+  rect(width / 2 - 1.97 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 1.53 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 1.08 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 0.63 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 0.18 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 0.27 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 0.72 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 1.17 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 1.62 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+
+  rect(width / 2 - 1.75 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 1.31 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 0.87 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 - 0.43 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 0.01 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 0.45 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 0.89 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 1.33 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+
+  fill(188, 212, 241);
+  stroke(10);
+
+  rect(width / 2 - 1.97 * PPCM, height / 2 - 1.45 * PPCM, 2 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 0.05 * PPCM, height / 2 - 1.45 * PPCM, 2 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+
+  fill(170);
+  stroke(10);
+
+  rect(width / 2 - 1.34 * PPCM, height / 2 + 0.55 * PPCM, 1.5 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+  rect(width / 2 + 0.28 * PPCM, height / 2 + 0.55 * PPCM, 1 * PPCM, 0.50 * PPCM, 0.05 * PPCM, 0.05 * PPCM);
+
+  if (onKey) {
+    drawHoverEffect();
+  }
+
+}
+
+function lettersKeyboard() {
+
+  fill(0);
+  noStroke();
+  textFont("Arial", 0.25 * PPCM);
+  textStyle(NORMAL);
+  text("Q", width / 2 - 1.80 * PPCM, height / 2 - 0.67 * PPCM);
+  text("W", width / 2 - 1.35 * PPCM, height / 2 - 0.67 * PPCM);
+  text("E", width / 2 - 0.90 * PPCM, height / 2 - 0.67 * PPCM);
+  text("R", width / 2 - 0.45 * PPCM, height / 2 - 0.67 * PPCM);
+  text("T", width / 2 - 0.00 * PPCM, height / 2 - 0.67 * PPCM);
+  text("Y", width / 2 + 0.45 * PPCM, height / 2 - 0.67 * PPCM);
+  text("U", width / 2 + 0.90 * PPCM, height / 2 - 0.67 * PPCM);
+  text("I", width / 2 + 1.35 * PPCM, height / 2 - 0.67 * PPCM);
+  text("O", width / 2 + 1.80 * PPCM, height / 2 - 0.67 * PPCM);
+
+
+  text("A", width / 2 - 1.80 * PPCM, height / 2 - 0.17 * PPCM);
+  text("S", width / 2 - 1.35 * PPCM, height / 2 - 0.17 * PPCM);
+  text("D", width / 2 - 0.90 * PPCM, height / 2 - 0.17 * PPCM);
+  text("F", width / 2 - 0.45 * PPCM, height / 2 - 0.17 * PPCM);
+  text("G", width / 2 + 0.00 * PPCM, height / 2 - 0.17 * PPCM);
+  text("H", width / 2 + 0.45 * PPCM, height / 2 - 0.17 * PPCM);
+  text("J", width / 2 + 0.90 * PPCM, height / 2 - 0.17 * PPCM);
+  text("K", width / 2 + 1.35 * PPCM, height / 2 - 0.17 * PPCM);
+  text("P", width / 2 + 1.80 * PPCM, height / 2 - 0.17 * PPCM);
+
+  text("Z", width / 2 - 1.52 * PPCM, height / 2 + 0.33 * PPCM);
+  text("X", width / 2 - 1.07 * PPCM, height / 2 + 0.33 * PPCM);
+  text("C", width / 2 - 0.62 * PPCM, height / 2 + 0.33 * PPCM);
+  text("V", width / 2 - 0.17 * PPCM, height / 2 + 0.33 * PPCM);
+  text("B", width / 2 + 0.28 * PPCM, height / 2 + 0.33 * PPCM);
+  text("N", width / 2 + 0.73 * PPCM, height / 2 + 0.33 * PPCM);
+  text("M", width / 2 + 1.18 * PPCM, height / 2 + 0.33 * PPCM);
+  text("L", width / 2 + 1.63 * PPCM, height / 2 + 0.33 * PPCM);
+
+  text("" + current_guess, width / 2 - 1.00 * PPCM, height / 2 - 1.07 * PPCM);
+  text("" + current_guess2, width / 2 + 1.00 * PPCM, height / 2 - 1.07 * PPCM);
+  //current_guess2 is the other suggestion
+  console.log(current_guess2);
+  text("<", width / 2 + 0.75 * PPCM, height / 2 + 0.83 * PPCM);
+
+
+}
+
+function chooseLetter() {
+  if (cursorWithin(width / 2 - 1.97 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 1.97 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("q");
+  }
+
+  else if (cursorWithin(width / 2 - 1.53 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 1.53 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("w");
+  }
+
+  else if (cursorWithin(width / 2 - 1.08 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 1.08 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("e");
+  }
+
+  else if (cursorWithin(width / 2 - 0.63 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 0.63 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("r");
+  }
+
+  else if (cursorWithin(width / 2 - 0.18 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 0.18 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("t");
+  }
+
+  else if (cursorWithin(width / 2 + 0.27 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 0.27 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("y");
+  }
+
+  else if (cursorWithin(width / 2 + 0.72 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 0.72 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("u");
+  }
+
+  else if (cursorWithin(width / 2 + 1.17 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 1.17 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("i");
+  }
+
+  else if (cursorWithin(width / 2 + 1.62 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 1.62 * PPCM, height / 2 - 0.95 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("o");
+  }
+
+  else if (cursorWithin(width / 2 - 1.97 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 1.97 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("a");
+  }
+
+  else if (cursorWithin(width / 2 - 1.53 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 1.53 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("s");
+  }
+
+  else if (cursorWithin(width / 2 - 1.08 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 1.08 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("d");
+  }
+
+  else if (cursorWithin(width / 2 - 0.63 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 0.63 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("f");
+  }
+
+  else if (cursorWithin(width / 2 - 0.18 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 0.18 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("g");
+  }
+
+  else if (cursorWithin(width / 2 + 0.27 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 0.27 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("h");
+  }
+
+  else if (cursorWithin(width / 2 + 0.72 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 0.72 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("j");
+  }
+
+  else if (cursorWithin(width / 2 + 1.17 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 1.17 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("k");
+  }
+
+  else if (cursorWithin(width / 2 + 1.62 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 1.62 * PPCM, height / 2 - 0.45 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("p");
+  }
+
+  else if (cursorWithin(width / 2 - 1.75 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 1.75 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("z");
+  }
+
+  else if (cursorWithin(width / 2 - 1.31 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 1.31 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("x");
+  }
+
+  else if (cursorWithin(width / 2 - 0.87 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 0.87 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("c");
+  }
+
+  else if (cursorWithin(width / 2 - 0.43 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 0.43 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("v");
+  }
+
+  else if (cursorWithin(width / 2 + 0.01 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 0.01 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("b");
+  }
+
+  else if (cursorWithin(width / 2 + 0.45 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 0.45 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("n");
+  }
+
+  else if (cursorWithin(width / 2 + 0.89 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 0.89 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("m");
+  }
+
+  else if (cursorWithin(width / 2 + 1.33 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 1.33 * PPCM, height / 2 + 0.05 * PPCM, 0.43 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter("l");
+  }
+
+  else if (cursorWithin(width / 2 - 1.34 * PPCM, height / 2 + 0.55 * PPCM, 1.5 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 1.34 * PPCM, height / 2 + 0.55 * PPCM, 1.5 * PPCM, 0.50 * PPCM);
+    SetCurrentLetter(" ");
+    space = true;
+
+  }
+
+  else if (cursorWithin(width / 2 + 0.28 * PPCM, height / 2 + 0.55 * PPCM, 1 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 0.28 * PPCM, height / 2 + 0.55 * PPCM, 1 * PPCM, 0.50 * PPCM);
+    current_letter = "`";
+    backspace = true;
+  }
+
+  else if (cursorWithin(width / 2 - 1.97 * PPCM, height / 2 - 1.45 * PPCM, 2 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 - 1.97 * PPCM, height / 2 - 1.45 * PPCM, 2 * PPCM, 0.50 * PPCM);
+    guess1 = true;
+  }
+
+  else if (cursorWithin(width / 2 + 0.05 * PPCM, height / 2 - 1.45 * PPCM, 2 * PPCM, 0.50 * PPCM)) {
+    resetKey();
+    confirmInput(width / 2 + 0.05 * PPCM, height / 2 - 1.45 * PPCM, 2 * PPCM, 0.50 * PPCM);
+    guess2 = true;
+  }
+
+  else {
+    resetKey();
+    SetCurrentLetter("");
+    onKey = false;
+  }
+
+}
+
+function resetKey() {
+  backspace = false;
+  guess1 = false;
+  guess2 = false;
+  space = false;
+}
+
+function drawCursor() {
+  fill(255, 0, 0);
+  noStroke();
+  circle(mouseX, mouseY - 0.75 * PPCM, 0.1 * PPCM)
+}
+
+function displayCursor() {
+  if (mouseIsPressed == true && mouseClickWithin(width / 2 - 2.0 * PPCM, height / 2 - 1.0 * PPCM, 4.0 * PPCM, 3.0 * PPCM)) {
+    showCursor = true
+    chooseLetter();
+  }
+  else {
+    showCursor = false
+  }
+}
+
+function confirmInput(x, y, w, h) {
+  onKey = true;
+
+  xHover = x;
+  yHover = y;
+  wHover = w;
+  hHover = h;
+}

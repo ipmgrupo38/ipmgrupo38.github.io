@@ -1,11 +1,8 @@
-html, body 
-{
+html, body {
   margin: 0;
   padding: 0;
 }
-
-canvas 
-{
+canvas {
   display: block;
 }
 
@@ -21,4 +18,11 @@ canvas
   font-size: 14px;
   font-family: 'Arial';
   color: white;
+}
+
+#instruction
+{
+  font-size: 16px;
+  font-family: 'Arial';
+  color: #5390D9;
 }
